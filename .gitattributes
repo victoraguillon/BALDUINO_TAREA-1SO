@@ -1,0 +1,10 @@
+# El proyecto se compila en Linux: los finales de linea deben ser LF.
+# Sin esto, git en Windows deja CRLF y las cadenas multilinea del codigo
+# arrastran un \r invisible querompe la salida de la TUI.
+* text=auto eol=lf
+
+# Binarios: nunca tocar
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary

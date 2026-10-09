@@ -1,0 +1,32 @@
+# Artefactos de compilacion
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.d
+
+# Binario generado (la carpeta del proyecto NO se ignora)
+/balduino/build/balduino
+/balduino/balduino
+
+# Programas de prueba desechables (viven fuera del arbol, pero por si acaso)
+tests_scratch/
+*.tmp
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Sistema
+Thumbs.db
+
+NOTAS.md
+work.md
