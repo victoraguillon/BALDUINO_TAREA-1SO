@@ -10,11 +10,11 @@ cmake_install.cmake
 Makefile
 *.d
 
-# Binario generado (la carpeta del proyecto NO se ignora)
+# Binario generado 
 /balduino/build/balduino
 /balduino/balduino
 
-# Programas de prueba desechables (viven fuera del arbol, pero por si acaso)
+# Programas de prueba desechables
 tests_scratch/
 *.tmp
 
