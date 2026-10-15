@@ -789,9 +789,65 @@ void App::render() {
     renderFooter(m_renderer, m_state);
 
     if (m_showHelp) {
-        const int lineas = 26, columnas = std::min(cols - 4, 62);
+        struct TeclaDef {
+            const char* k;
+            const char* d;
+        };
+        struct GlosarioDef {
+            const char* abbr;
+            const char* desc;
+        };
+
+        const TeclaDef teclas[] = {
+            {"q / Ctrl-C", "salir"},
+            {"+ / -", "intervalo de refresco"},
+            {"c / m", "ordenar CPU / memoria"},
+            {"i / u", "ordenar PID / usuario"},
+            {"/", "filtrar por nombre"},
+            {"t / h / g", "arbol / hilos / historico"},
+            {"k", "terminar (SIGTERM)"},
+            {"K", "terminar a la fuerza"},
+            {"s / r", "suspender / reanudar"},
+            {"p", "prioridad (nice)"},
+            {"?", "esta ayuda"},
+            {"Esc", "atras / cancelar"},
+        };
+
+        const GlosarioDef glosario[] = {
+            {"PID", "id del proceso"},
+            {"PPID", "id del proceso padre"},
+            {"USER", "dueno del proceso"},
+            {"S", "estado del proceso"},
+            {"%CPU", "% de CPU que usa"},
+            {"%MEM", "% de la memoria total"},
+            {"RSS", "memoria en RAM (K/M/G)"},
+            {"THR", "cantidad de hilos"},
+            {"PRI", "prioridad del kernel"},
+            {"NI", "nice: prioridad de usuario"},
+            {"TIME", "tiempo de CPU (m:ss.cc)"},
+            {"COMMAND", "linea de ordenes"},
+        };
+
+        const int nTeclas  = static_cast<int>(sizeof(teclas) / sizeof(teclas[0]));
+        const int nGlos    = static_cast<int>(sizeof(glosario) / sizeof(glosario[0]));
+        const int sepIzq   = 3;
+        const int tituloH = 1;
+        const int bajoDe   = tituloH + 1;
+        const int movTit   = bajoDe + nTeclas + 1;
+        const int movLineas = 4;
+        const int utilIzq  = movTit + movLineas;
+        const int estTit   = tituloH + 2 + nGlos;
+        const int utilDer  = estTit + 3;
+
+        const int lineas  = std::min(std::max(rows - 2, 8), std::max(utilIzq, utilDer) + 2);
+        const int columnas = std::min(cols - 4, 76);
+        const int util     = std::max(4, columnas - 4);
+        const int anchoIzq = std::max(12, util * 46 / 100);
+        const int xDer     = 2 + anchoIzq + sepIzq;
+        const int anchoDer = std::max(10, util - anchoIzq - sepIzq);
         const int t = std::max(0, (rows - lineas) / 2);
         const int l = std::max(0, (cols - columnas) / 2);
+
         m_renderer.fillRect(t, l, t + lineas - 1, l + columnas - 1, WHITE, BLACK);
         for (int c = l; c < l + columnas; ++c) {
             m_renderer.put(t, c, U'\u2500', CYAN, BLACK);
@@ -805,40 +861,64 @@ void App::render() {
             m_renderer.put(y, l, U'\u2502', CYAN, BLACK);
             m_renderer.put(y, l + columnas - 1, U'\u2502', CYAN, BLACK);
         }
-        const char* ayuda[] = {
-            "Balduino - monitor de procesos",
-            "",
-            "q          salir (tambien Ctrl-C)",
-            "+ / -      intervalo de refresco",
-            "c / m      ordenar por CPU / memoria",
-            "i / u      ordenar por PID / usuario",
-            "/          filtrar por nombre",
-            "t          vista de arbol",
-            "h          vista de hilos",
-            "g          historico de CPU",
-            "k          terminar (SIGTERM)",
-            "K          terminar por la fuerza (SIGKILL)",
-            "s          suspender (SIGSTOP)",
-            "r          reanudar (SIGCONT)",
-            "p          cambiar prioridad (nice)",
-            "---",
-            "Flechas para moverse por la lista:",
-            "  arriba / abajo        una fila",
-            "  Re Pag / Av Pag       una pantalla",
-            "  Inicio / Fin          primero / ultimo",
-            "  izquierda / derecha   solo en el arbol:",
-            "                         padre / primer hijo",
-            "",
-            "Esc        atras / cancelar",
+
+        m_renderer.putStr(t + 1, l + 2, padRight("Balduino - monitor de procesos", util),
+                          BRIGHT_YELLOW, BLACK, ATTR_BOLD);
+        m_renderer.putStr(t + 1, l + xDer, padRight("COLUMNAS DE LA TABLA", anchoDer),
+                          BRIGHT_CYAN, BLACK, ATTR_BOLD);
+
+        for (int i = 0; i < nTeclas; i++) {
+            const int y = t + 1 + bajoDe + i;
+            if (y > t + lineas - 2) break;
+            m_renderer.putStr(y, l + 2, padRight(teclas[i].k, 11),
+                              BRIGHT_YELLOW, BLACK, ATTR_BOLD);
+            m_renderer.putStr(y, l + 2 + 11, padRight(teclas[i].d, std::max(0, anchoIzq - 11)),
+                              WHITE, BLACK, ATTR_NONE);
+        }
+
+        static const char* const movTxt[movLineas] = {
+            "flechas        una fila",
+            "Re Pag/Av Pag  una pantalla",
+            "Inicio/Fin     primero / ultimo",
+            "<-/->          en arbol: padre/hijo",
         };
-        for (int i = 0; i < static_cast<int>(sizeof(ayuda) / sizeof(ayuda[0])); ++i) {
-            m_renderer.putStr(t + 1 + i, l + 2,
-                              padRight(ayuda[i], columnas - 4),
-                              (i == 0)   ? BRIGHT_YELLOW
-                              : (ayuda[i][0] == '-' && i > 0) ? BRIGHT_CYAN
-                                                             : WHITE,
-                              BLACK,
-                              (i == 0) ? ATTR_BOLD : ATTR_NONE);
+        const int ultimoUtil = lineas - 3;
+        if (movTit + 1 <= ultimoUtil) {
+            m_renderer.putStr(t + 1 + movTit, l + 2, padRight("MOVERSE POR LA LISTA", util),
+                              BRIGHT_CYAN, BLACK, ATTR_BOLD);
+        }
+        for (int i = 1; i < movLineas; i++) {
+            const int y = t + 1 + movTit + i;
+            if (y > t + lineas - 2) break;
+            m_renderer.putStr(y, l + 2, padRight(movTxt[i], util), WHITE, BLACK, ATTR_NONE);
+        }
+
+        for (int i = 0; i < nGlos; i++) {
+            const int y = t + 1 + bajoDe + 1 + i;
+            if (y > t + lineas - 2) break;
+            m_renderer.putStr(y, l + xDer, padRight(glosario[i].abbr, 9),
+                              BRIGHT_YELLOW, BLACK, ATTR_BOLD);
+            m_renderer.putStr(y, l + xDer + 9, padRight(glosario[i].desc, std::max(0, anchoDer - 9)),
+                              WHITE, BLACK, ATTR_NONE);
+        }
+
+        static const char* const estados[3] = {
+            "  R  corriendo   S  dormido",
+            "  D  disco       T  detenido",
+            "  Z  zombie",
+        };
+        {
+            const int yTit = t + 1 + estTit;
+            if (yTit + 1 <= t + lineas - 2) {
+                m_renderer.putStr(yTit, l + xDer, padRight("ESTADOS (columna S)", anchoDer),
+                                  BRIGHT_CYAN, BLACK, ATTR_BOLD);
+                for (int i = 0; i < 3; i++) {
+                    const int y = yTit + 1 + i;
+                    if (y > t + lineas - 2) break;
+                    m_renderer.putStr(y, l + xDer, padRight(estados[i], anchoDer),
+                                      WHITE, BLACK, ATTR_NONE);
+                }
+            }
         }
     }
 
