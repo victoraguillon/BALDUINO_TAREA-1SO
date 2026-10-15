@@ -14,8 +14,8 @@ namespace {
 
 const char* BRANCH    = "\u251C\u2500";
 const char* LASTBR    = "\u2514\u2500";
-const char* SPARKLINE = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
-constexpr int SPARK_LEVELS = 8;
+constexpr int BRAILLE_BASE = 0x2800;
+constexpr int BRAILLE_ROWS = 4;
 
 struct Layout {
     int pid = 7, ppid = 7, user = 9, state = 2, cpu = 6, mem = 6;
@@ -359,15 +359,25 @@ void renderThreads(Renderer& r, const ProcessInfo& proc,
 
 void renderHistory(Renderer& r, const ProcessInfo& proc, int top, int height) {
     const int cols = r.cols();
+    if (cols <= 0 || height <= 0) return;
+
+    const std::string titulo = " Historico de CPU ";
 
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "Historico de CPU de PID %d  (%s)   Nice: %d   %s",
-                  proc.pid, proc.shortName.c_str(), proc.nice, proc.command.c_str());
-    r.putStr(top, 0, padRight(std::string(buf), cols), WHITE, BLUE, ATTR_BOLD);
+    std::snprintf(buf, sizeof(buf), " PID %d  (%s)  nice %d",
+                  proc.pid,
+                  proc.shortName.empty() ? "?" : proc.shortName.c_str(),
+                  proc.nice);
+    r.putStr(top, 0, padRight(titulo, cols), WHITE, BLUE, ATTR_BOLD);
+    const int anchoBuf = std::min(static_cast<int>(std::strlen(buf)), cols - 20);
+    if (anchoBuf > 0) {
+        r.putStr(top, cols - anchoBuf, padRight(std::string(buf, std::size_t(anchoBuf)), cols),
+                 WHITE, BLUE, ATTR_NONE);
+    }
 
     if (proc.cpuHistory.empty()) {
-        r.putStr(top + 2, 0, padRight("  (todavia no hay muestras; espera un refresco)",
-                                     cols), BRIGHT_BLACK, BLACK);
+        r.putStr(top + 2, 2, padRight("(todavia no hay muestras; espera un refresco)",
+                                     std::max(0, cols - 4)), BRIGHT_BLACK, BLACK, ATTR_NONE);
         return;
     }
 
@@ -381,50 +391,119 @@ void renderHistory(Renderer& r, const ProcessInfo& proc, int top, int height) {
 
     char est[256];
     std::snprintf(est, sizeof(est),
-                  "  Muestras: %zu de %zu    Max: %6.2f%%    Min: %6.2f%%    Promedio: %6.2f%%",
-                  proc.cpuHistory.size(), static_cast<std::size_t>(HISTORY_SIZE), maximo,
-                  minimo, promedio);
-    r.putStr(top + 1, 0, padRight(est, cols), WHITE, BLACK);
+                  "  %zu/%zu muestras", proc.cpuHistory.size(),
+                  static_cast<std::size_t>(HISTORY_SIZE));
+    r.putStr(top + 1, 0, padRight(est, std::max(0, cols - 1)), WHITE, BLACK, ATTR_NONE);
 
-    const int anchoGrafico = std::max(10, cols - 4);
-    const int filasGrafico = std::max(3, height - 5);
+    char nums[160];
+    std::snprintf(nums, sizeof(nums), "max %6.2f%%", maximo);
+    r.putStr(top + 1, std::max(0, cols / 2 - 26), padRight(nums, 18), BRIGHT_YELLOW, BLACK,
+             ATTR_NONE);
+    std::snprintf(nums, sizeof(nums), "min %6.2f%%", minimo);
+    r.putStr(top + 1, std::max(0, cols / 2 - 6), padRight(nums, 18), WHITE, BLACK,
+             ATTR_NONE);
+    std::snprintf(nums, sizeof(nums), "promedio %6.2f%%", promedio);
+    r.putStr(top + 1, std::max(0, cols / 2 + 14), padRight(nums, 22), BRIGHT_CYAN, BLACK,
+             ATTR_BOLD);
 
-    const std::size_t n = proc.cpuHistory.size();
-    std::size_t       ini = 0;
-    if (n > static_cast<std::size_t>(anchoGrafico)) {
-        ini = n - static_cast<std::size_t>(anchoGrafico);
+    constexpr int EJE = 8;
+    const int x0 = std::min(EJE + 1, std::max(1, cols - 10));
+    const int pie = top + height - 1;
+    const int yTopGraf = top + 3;
+    // Se reservan dos filas dentro del marco para la escala y la leyenda.
+    const int filasG = std::max(3, pie - 2 - yTopGraf);
+    const int anchoG = std::max(4, cols - x0 - 3);
+
+    if (filasG < 3 || anchoG < 4) {
+        r.putStr(top + 2, 2, padRight("(terminal demasiado chica para el grafico)",
+                                     std::max(0, cols - 4)), BRIGHT_BLACK, BLACK, ATTR_NONE);
+        return;
     }
 
-    r.fillRect(top + 2, 0, top + 2 + filasGrafico - 1, cols - 1, BLACK, BLACK);
+    r.fillRect(yTopGraf - 1, 0, pie, cols - 1, BLACK, BLACK);
 
-    for (int c = 0; c < anchoGrafico && ini + static_cast<std::size_t>(c) < n; ++c) {
-        const double v = proc.cpuHistory[ini + static_cast<std::size_t>(c)];
-        const std::uint8_t fg = (v >= 50.0) ? BRIGHT_RED : (v >= 20.0 ? YELLOW : GREEN);
-        const int    barras = (maximo > 0.0)
-                                  ? static_cast<int>(std::lround(v / maximo * filasGrafico))
-                                  : 0;
+    r.putStr(yTopGraf - 1, 0, "\u256D", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    r.putStr(pie, 0, "\u2570", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    for (int c = 1; c < cols - 1; ++c) {
+        r.putStr(yTopGraf - 1, c, "\u2500", BRIGHT_BLACK, BLACK, ATTR_NONE);
+        r.putStr(pie, c, "\u2500", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    }
+    r.putStr(yTopGraf - 1, cols - 1, "\u256E", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    r.putStr(pie, cols - 1, "\u256F", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    for (int y = yTopGraf; y < pie; ++y) {
+        r.putStr(y, 0, "\u2502", BRIGHT_BLACK, BLACK, ATTR_NONE);
+        r.putStr(y, cols - 1, "\u2502", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    }
 
-        const int nivelDibujo = (maximo > 0.0) ? std::max(barras, 1) : 1;
-        const int glifoIdx = (maximo > 0.0)
-                                 ? std::min(SPARK_LEVELS - 1,
-                                            nivelDibujo * SPARK_LEVELS / filasGrafico)
-                                 : 0;
-        const std::string glifo =
-            std::string(SPARKLINE).substr(static_cast<std::size_t>(glifoIdx) * 3, 3);
+    char et[32];
+    if (maximo > 0.0) {
+        std::snprintf(et, sizeof(et), "%6.2f%%", maximo);
+        r.putStr(yTopGraf, 0, padRight(et, EJE - 1), BRIGHT_BLACK, BLACK, ATTR_NONE);
+        std::snprintf(et, sizeof(et), "%6.2f%%", maximo * 0.5);
+        r.putStr(yTopGraf + (filasG - 1) / 2, 0, padRight(et, EJE - 1), BRIGHT_BLACK, BLACK,
+                 ATTR_NONE);
+    }
+    r.putStr(yTopGraf + filasG - 1, 0, padRight("  0.00%", EJE - 1), BRIGHT_BLACK, BLACK,
+             ATTR_NONE);
+    for (int y = yTopGraf; y < yTopGraf + filasG; ++y) {
+        r.putStr(y, EJE, "\u2524", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    }
 
-        for (int b = 0; b < nivelDibujo; ++b) {
-            const int row = top + 2 + filasGrafico - 1 - b;
-            r.putStr(row, 2 + c, glifo, fg, BLACK);
+    const int yMedio = yTopGraf + (filasG - 1) / 2;
+    for (int c = x0; c < x0 + anchoG && c < cols - 1; ++c) {
+        r.putStr(yMedio, c, "\u2508", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    }
+
+    const std::size_t n = proc.cpuHistory.size();
+    const std::size_t ini = (n > static_cast<std::size_t>(anchoG))
+                                ? n - static_cast<std::size_t>(anchoG)
+                                : 0;
+
+    for (int c = 0; c < anchoG; ++c) {
+        const std::size_t idx = ini + static_cast<std::size_t>(c);
+        if (idx >= n) break;
+
+        const double v = proc.cpuHistory[idx];
+        const std::uint8_t fg = (v >= 50.0) ? BRIGHT_RED
+                                            : (v >= 20.0 ? YELLOW : GREEN);
+
+        const int ticks = (maximo > 0.0)
+                              ? static_cast<int>(std::lround(v / maximo * filasG * BRAILLE_ROWS))
+                              : 0;
+
+        for (int j = 0; j < filasG; ++j) {
+            const int base = j * BRAILLE_ROWS;
+            const int celda = (ticks >= base + BRAILLE_ROWS) ? BRAILLE_ROWS
+                               : (ticks <= base)               ? 0
+                                                                : ticks - base;
+            if (celda <= 0) continue;
+
+            int patron = 0;
+            for (int k = 0; k < celda; ++k) {
+                const int filaDesdeArriba = BRAILLE_ROWS - 1 - k;
+                patron |= (1 << (2 * filaDesdeArriba)) | (1 << (2 * filaDesdeArriba + 1));
+            }
+
+            const char32_t glifo = static_cast<char32_t>(BRAILLE_BASE + patron);
+            r.put(yTopGraf + filasG - 1 - j, x0 + c, glifo, fg, BLACK, ATTR_NONE);
         }
     }
 
-    if (maximo > 0.0) {
-        char ref[64];
-        std::snprintf(ref, sizeof(ref), "%6.1f%%", maximo);
-        r.putStr(top + 2, 0, padRight(ref, std::max(0, cols - anchoGrafico - 3)), BRIGHT_BLACK,
-                 BLACK, ATTR_NONE);
-        r.putStr(top + 2 + filasGrafico - 1, 0, "   0.0%", BRIGHT_BLACK, BLACK, ATTR_NONE);
+    if (maximo <= 0.0) {
+        for (int c = x0; c < x0 + anchoG && c < cols - 1; ++c) {
+            r.put(yTopGraf + filasG - 1, c, U'\u2500', BRIGHT_BLACK, BLACK, ATTR_NONE);
+        }
     }
+
+    char esc[64];
+    std::snprintf(esc, sizeof(esc), "escala 0 -> %.2f%% (maximo de la ventana)", maximo);
+    const int yEsc = yTopGraf + filasG;
+    r.putStr(yEsc, x0, padRight(esc, std::max(0, cols - x0 - 1)), BRIGHT_BLACK, BLACK,
+             ATTR_NONE);
+    r.putStr(yEsc + 1, x0,
+             padRight("area continua: cada muestra es una barra de braille   "
+                      "verde <20%   amarillo 20-50%   rojo >50%",
+                      std::max(0, cols - x0 - 1)), BRIGHT_BLACK, BLACK, ATTR_NONE);
 }
 
 void renderFooter(Renderer& r, const AppState& st) {

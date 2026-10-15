@@ -532,7 +532,13 @@ void App::handleFilterKey(const Key& k) {
             setStatus("Filtro cancelado");
             return;
         case KeyType::Backspace:
-            if (!m_state.filterInput.empty()) m_state.filterInput.pop_back();
+            if (!m_state.filterInput.empty()) {
+                m_state.filterInput.pop_back();
+                m_state.filter = m_state.filterInput;
+                rebuildVisible();
+                rebuildTree();
+                resolveSelection();
+            }
             return;
         default:
             if (k.isChar() && k.ch >= 0x20 && k.ch < 0x7f) {
